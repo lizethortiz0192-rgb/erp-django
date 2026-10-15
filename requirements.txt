@@ -1,0 +1,6 @@
+Django
+gunicorn
+dj-database-url
+psycopg2-binary
+whitenoise==6.12.0
+django-environ
