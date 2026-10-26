@@ -86,3 +86,62 @@ LOGGING = {
         },
     },
 }
+
+# ============================================================
+# PERSONALIZACION SKZ - PANEL DE ADMINISTRACION
+# ============================================================
+
+JAZZMIN_SETTINGS = {
+    'site_title': 'LIZ SYSTEM',
+    'site_header': 'LIZ SYSTEM',
+    'site_brand': 'LIZ SYSTEM',
+    'welcome_sign': 'Bienvenido a LIZ SYSTEM',
+    'copyright': 'LIZ SYSTEM',
+    'search_model': [
+        'clientes.Cliente',
+        'productos.Producto',
+        'proveedores.Proveedor',
+        'ventas.Venta',
+    ],
+    'topmenu_links': [
+        {'name': 'Inicio', 'url': '/', 'new_window': False},
+        {'name': 'Ver sitio', 'url': '/', 'new_window': True},
+    ],
+    'show_sidebar': True,
+    'navigation_expanded': True,
+    'hide_apps': [],
+    'hide_models': [],
+    'order_with_respect_to': [
+        'clientes',
+        'productos',
+        'proveedores',
+        'ventas',
+        'reportes',
+    ],
+}
+
+JAZZMIN_UI_TWEAKS = {
+    'navbar_small_text': False,
+    'footer_small_text': False,
+    'body_small_text': False,
+    'brand_small_text': False,
+    'brand_colour': 'navbar-dark',
+    'accent': 'accent-danger',
+    'navbar': 'navbar-dark',
+    'navbar_fixed': True,
+    'sidebar': 'sidebar-dark-danger',
+    'sidebar_nav_small_text': False,
+    'sidebar_nav_legacy_style': True,
+    'sidebar_nav_compact_style': False,
+    'sidebar_nav_flat_style': True,
+    'theme': 'darkly',
+    'dark_mode_theme': 'darkly',
+    'button_classes': {
+        'primary': 'btn-danger',
+        'secondary': 'btn-secondary',
+        'info': 'btn-info',
+        'warning': 'btn-warning',
+        'danger': 'btn-danger',
+        'success': 'btn-success',
+    },
+}
