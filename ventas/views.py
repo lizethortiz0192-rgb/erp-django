@@ -3,7 +3,8 @@
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import DeleteView, DetailView, ListView
@@ -50,13 +51,10 @@ class VentaDetailView(DetailView):
         )
 
 
+@login_required
+@permission_required('ventas.add_venta', raise_exception=True)
 def crear_venta(request):
     """Crea una venta con una línea de detalle."""
-
-    if not request.user.is_authenticated:
-        return redirect(
-            f"{settings.LOGIN_URL}?next={request.path}"
-        )
 
     venta_form = VentaForm(request.POST or None)
     detalle_form = DetalleVentaForm(request.POST or None)
@@ -74,10 +72,7 @@ def crear_venta(request):
                 f'Total: ${venta.total:.2f}'
             )
 
-            return redirect(
-                'ventas:detalle',
-                venta_id=venta.pk
-            )
+            return redirect('ventas:detalle', venta_id=venta.pk)
 
     return render(
         request,
@@ -89,13 +84,19 @@ def crear_venta(request):
     )
 
 
-class VentaDeleteView(LoginRequiredMixin, DeleteView):
+class VentaDeleteView(
+    LoginRequiredMixin,
+    PermissionRequiredMixin,
+    DeleteView
+):
     """Elimina una venta y sus detalles asociados."""
 
     model = Venta
     template_name = 'ventas/eliminar.html'
     pk_url_kwarg = 'venta_id'
     success_url = reverse_lazy('ventas:lista')
+    permission_required = 'ventas.delete_venta'
+    raise_exception = True
 
     def form_valid(self, form):
         pk = self.object.pk

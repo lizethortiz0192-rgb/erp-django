@@ -1,4 +1,3 @@
-
 """Suite de pruebas W08 — Vistas de escritura: Create, Update, Delete.
 
 Verifica: redirección sin auth, GET con auth, POST válido,
@@ -7,9 +6,10 @@ POST inválido y borrado con redirect.
 Ejecutar con:
     python manage.py test tests.test_w08_escritura --verbosity=2
 """
+
 from decimal import Decimal
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
 
@@ -26,6 +26,12 @@ class ProductoEscrituraTest(TestCase):
         self.user = User.objects.create_user(
             'testuser', password='testpass123'
         )
+
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='add_producto'),
+            Permission.objects.get(codename='delete_producto'),
+        )
+
         self.cat = Categoria.objects.create(nombre='Cat Test')
         self.prod = Producto.objects.create(
             nombre='Laptop',
@@ -65,6 +71,7 @@ class ProductoEscrituraTest(TestCase):
             'categoria': self.cat.pk,
             'activo': True,
         }
+
         r = self.client.post(reverse('productos:crear'), datos)
 
         self.assertRedirects(r, reverse('productos:lista'))
@@ -81,6 +88,7 @@ class ProductoEscrituraTest(TestCase):
             'stock': '5',
             'categoria': self.cat.pk,
         }
+
         r = self.client.post(reverse('productos:crear'), datos)
 
         self.assertEqual(r.status_code, 200)
@@ -108,6 +116,10 @@ class ClienteEscrituraTest(TestCase):
             'userC', password='pass'
         )
 
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='add_cliente'),
+        )
+
     def test_crear_cliente_sin_auth_redirige(self):
         """Crear un cliente sin sesión redirige al login."""
         r = self.client.get(reverse('clientes:crear'))
@@ -116,6 +128,7 @@ class ClienteEscrituraTest(TestCase):
     def test_post_valido_crea_cliente(self):
         """Un POST válido crea el cliente y redirige."""
         self.client.force_login(self.user)
+
         r = self.client.post(reverse('clientes:crear'), {
             'nombre': 'María López',
             'correo': 'maria@test.com',
@@ -192,6 +205,11 @@ class VentaEscrituraTest(TestCase):
         self.user = User.objects.create_user(
             'userV', password='pass'
         )
+
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='add_venta'),
+        )
+
         cat = Categoria.objects.create(nombre='Cat')
         self.prod = Producto.objects.create(
             nombre='P',

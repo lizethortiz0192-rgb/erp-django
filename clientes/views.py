@@ -1,8 +1,11 @@
 
-"""Vistas de la aplicación clientes — W07 y W08."""
+"""Vistas de la aplicación clientes — W07, W08 y W09."""
 
 from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import (
+    LoginRequiredMixin,
+    PermissionRequiredMixin,
+)
 from django.shortcuts import render
 from django.urls import reverse_lazy
 from django.views.generic import (
@@ -48,24 +51,34 @@ class ClienteDetailView(DetailView):
         return context
 
 
-class ClienteCreateView(LoginRequiredMixin, CreateView):
+class ClienteCreateView(
+    LoginRequiredMixin,
+    PermissionRequiredMixin,
+    CreateView,
+):
     """Crea un cliente nuevo."""
 
     model = Cliente
     form_class = ClienteForm
     template_name = 'clientes/crear.html'
     success_url = reverse_lazy('clientes:lista')
+    permission_required = 'clientes.add_cliente'
+    raise_exception = False
 
     def form_valid(self, form):
         response = super().form_valid(form)
         messages.success(
             self.request,
-            f'Cliente "{self.object.nombre}" creado exitosamente.'
+            f'Cliente "{self.object.nombre}" creado exitosamente.',
         )
         return response
 
 
-class ClienteUpdateView(LoginRequiredMixin, UpdateView):
+class ClienteUpdateView(
+    LoginRequiredMixin,
+    PermissionRequiredMixin,
+    UpdateView,
+):
     """Actualiza los datos de un cliente."""
 
     model = Cliente
@@ -73,29 +86,37 @@ class ClienteUpdateView(LoginRequiredMixin, UpdateView):
     template_name = 'clientes/editar.html'
     pk_url_kwarg = 'cliente_id'
     success_url = reverse_lazy('clientes:lista')
-
+    permission_required = 'clientes.change_cliente'
+    raise_exception = False
+    
     def form_valid(self, form):
         response = super().form_valid(form)
         messages.success(
             self.request,
-            f'Cliente "{self.object.nombre}" actualizado.'
+            f'Cliente "{self.object.nombre}" actualizado.',
         )
         return response
 
 
-class ClienteDeleteView(LoginRequiredMixin, DeleteView):
+class ClienteDeleteView(
+    LoginRequiredMixin,
+    PermissionRequiredMixin,
+    DeleteView,
+):
     """Elimina un cliente."""
 
     model = Cliente
     template_name = 'clientes/eliminar.html'
     pk_url_kwarg = 'cliente_id'
     success_url = reverse_lazy('clientes:lista')
+    permission_required = 'clientes.delete_cliente'
+    raise_exception = True
 
     def form_valid(self, form):
         nombre = self.object.nombre
         response = super().form_valid(form)
         messages.success(
             self.request,
-            f'Cliente "{nombre}" eliminado.'
+            f'Cliente "{nombre}" eliminado.',
         )
         return response

@@ -1,8 +1,11 @@
 
-"""Vistas de la aplicación productos — W07 y W08."""
+"""Vistas de la aplicación productos — W07, W08 y W09."""
 
 from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import (
+    LoginRequiredMixin,
+    PermissionRequiredMixin,
+)
 from django.shortcuts import render
 from django.urls import reverse_lazy
 from django.views.generic import (
@@ -31,7 +34,6 @@ class ProductoListView(ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        """Obtiene productos con sus relaciones precargadas."""
         return (
             Producto.objects
             .select_related('categoria', 'proveedor')
@@ -64,7 +66,7 @@ class ProductoCreateView(LoginRequiredMixin, CreateView):
         response = super().form_valid(form)
         messages.success(
             self.request,
-            f'Producto "{self.object.nombre}" creado exitosamente.'
+            f'Producto "{self.object.nombre}" creado exitosamente.',
         )
         return response
 
@@ -82,24 +84,31 @@ class ProductoUpdateView(LoginRequiredMixin, UpdateView):
         response = super().form_valid(form)
         messages.success(
             self.request,
-            f'Producto "{self.object.nombre}" actualizado.'
+            f'Producto "{self.object.nombre}" actualizado.',
         )
         return response
 
 
-class ProductoDeleteView(LoginRequiredMixin, DeleteView):
-    """Elimina un producto."""
+class ProductoDeleteView(
+    LoginRequiredMixin,
+    PermissionRequiredMixin,
+    DeleteView,
+):
+    """Elimina un producto con permiso autorizado."""
 
     model = Producto
     template_name = 'productos/eliminar.html'
     pk_url_kwarg = 'producto_id'
     success_url = reverse_lazy('productos:lista')
+    permission_required = 'productos.delete_producto'
+    raise_exception = False
 
     def form_valid(self, form):
         nombre = self.object.nombre
         response = super().form_valid(form)
         messages.success(
             self.request,
-            f'Producto "{nombre}" eliminado.'
+            f'Producto "{nombre}" eliminado.',
         )
         return response
+
