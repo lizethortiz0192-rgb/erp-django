@@ -1,65 +1,60 @@
-# clientes/views.py
-"""Vistas de la app clientes — W07.
 
-Lectura: ListView y DetailView.
-Escritura (Create/Update/Delete): W08.
-"""
-from django.views.generic import DetailView, ListView
+"""Vistas de la aplicación clientes — W07 y W08."""
 
-from .models import Cliente
+from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import render
-from django.views.generic import DetailView, ListView
+from django.urls import reverse_lazy
+from django.views.generic import (
+    CreateView,
+    DeleteView,
+    DetailView,
+    ListView,
+    UpdateView,
+)
+
+from .forms import ClienteForm
+from .models import Cliente
+
+
+def inicio(request):
+    """Vista de inicio compatible con las pruebas de W02."""
+    return render(request, 'clientes/index.html')
+
 
 class ClienteListView(ListView):
     """Lista paginada de clientes activos."""
 
-    model               = Cliente
-    template_name       = 'clientes/lista.html'
+    model = Cliente
+    template_name = 'clientes/lista.html'
     context_object_name = 'clientes'
-    paginate_by         = 20
+    paginate_by = 20
 
     def get_queryset(self):
         return Cliente.objects.filter(activo=True).order_by('nombre')
 
 
 class ClienteDetailView(DetailView):
-    """Detalle de un cliente con su historial de ventas."""
+    """Muestra los detalles de un cliente y sus últimas ventas."""
 
-    model               = Cliente
-    template_name       = 'clientes/detalle.html'
+    model = Cliente
+    template_name = 'clientes/detalle.html'
     context_object_name = 'cliente'
-    pk_url_kwarg        = 'cliente_id'
+    pk_url_kwarg = 'cliente_id'
 
     def get_context_data(self, **kwargs):
-        """Agrega las ventas del cliente al contexto."""
-        ctx = super().get_context_data(**kwargs)
-        ctx['ventas'] = (
-            self.object.ventas
-            .order_by('-fecha')[:10]   # últimas 10 ventas
-        )
-        return ctx
-
-
-def inicio(request):
-    """Vista de inicio de clientes para compatibilidad con W02."""
-    return render(request, 'clientes/index.html')
-# clientes/views.py — agregar imports al inicio:
-from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.urls import reverse_lazy
-from django.views.generic import (
-    CreateView, DeleteView, DetailView, ListView, UpdateView
-)
-from .forms import ClienteForm
+        context = super().get_context_data(**kwargs)
+        context['ventas'] = self.object.ventas.order_by('-fecha')[:10]
+        return context
 
 
 class ClienteCreateView(LoginRequiredMixin, CreateView):
-    """Formulario para crear un nuevo cliente."""
+    """Crea un cliente nuevo."""
 
-    model         = Cliente
-    form_class    = ClienteForm
+    model = Cliente
+    form_class = ClienteForm
     template_name = 'clientes/crear.html'
-    success_url   = reverse_lazy('clientes:lista')
+    success_url = reverse_lazy('clientes:lista')
 
     def form_valid(self, form):
         response = super().form_valid(form)
@@ -71,13 +66,13 @@ class ClienteCreateView(LoginRequiredMixin, CreateView):
 
 
 class ClienteUpdateView(LoginRequiredMixin, UpdateView):
-    """Formulario para editar un cliente."""
+    """Actualiza los datos de un cliente."""
 
-    model         = Cliente
-    form_class    = ClienteForm
+    model = Cliente
+    form_class = ClienteForm
     template_name = 'clientes/editar.html'
-    pk_url_kwarg  = 'cliente_id'
-    success_url   = reverse_lazy('clientes:lista')
+    pk_url_kwarg = 'cliente_id'
+    success_url = reverse_lazy('clientes:lista')
 
     def form_valid(self, form):
         response = super().form_valid(form)
@@ -89,15 +84,18 @@ class ClienteUpdateView(LoginRequiredMixin, UpdateView):
 
 
 class ClienteDeleteView(LoginRequiredMixin, DeleteView):
-    """Confirmación y borrado de un cliente."""
+    """Elimina un cliente."""
 
-    model         = Cliente
+    model = Cliente
     template_name = 'clientes/eliminar.html'
-    pk_url_kwarg  = 'cliente_id'
-    success_url   = reverse_lazy('clientes:lista')
+    pk_url_kwarg = 'cliente_id'
+    success_url = reverse_lazy('clientes:lista')
 
     def form_valid(self, form):
-        nombre   = self.object.nombre
+        nombre = self.object.nombre
         response = super().form_valid(form)
-        messages.success(self.request, f'Cliente "{nombre}" eliminado.')
+        messages.success(
+            self.request,
+            f'Cliente "{nombre}" eliminado.'
+        )
         return response

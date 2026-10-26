@@ -1,32 +1,37 @@
-# productos/views.py
-"""Vistas de la app productos — W07.
 
-ListView y DetailView con select_related y paginación.
-Escritura (Create/Update/Delete) se implementa en W08.
-"""
-from django.views.generic import DetailView, ListView
+"""Vistas de la aplicación productos — W07 y W08."""
+
+from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import render
+from django.urls import reverse_lazy
+from django.views.generic import (
+    CreateView,
+    DeleteView,
+    DetailView,
+    ListView,
+    UpdateView,
+)
+
+from .forms import ProductoForm
 from .models import Producto
 
 
+def inicio(request):
+    """Vista de inicio compatible con las pruebas de W02."""
+    return render(request, 'productos/index.html')
+
+
 class ProductoListView(ListView):
-    """Lista paginada de productos activos.
+    """Lista paginada de productos activos."""
 
-    Atributos:
-        model:               Modelo a listar.
-        template_name:       Plantilla HTML (Fable 5 AzulERP).
-        context_object_name: Nombre de la variable en el template.
-        paginate_by:         20 productos por página.
-        queryset:            Solo productos activos, con FK pre-cargadas.
-    """
-
-    model               = Producto
-    template_name       = 'productos/lista.html'
+    model = Producto
+    template_name = 'productos/lista.html'
     context_object_name = 'productos'
-    paginate_by         = 20
+    paginate_by = 20
 
     def get_queryset(self):
-        """Devuelve productos activos con FKs pre-cargadas (evita N+1)."""
+        """Obtiene productos con sus relaciones precargadas."""
         return (
             Producto.objects
             .select_related('categoria', 'proveedor')
@@ -36,63 +41,26 @@ class ProductoListView(ListView):
 
 
 class ProductoDetailView(DetailView):
-    """Detalle de un producto por ID de URL.
+    """Muestra el detalle de un producto."""
 
-    Atributos:
-        model:               Modelo a mostrar.
-        template_name:       Plantilla HTML.
-        context_object_name: Nombre en el template ('producto').
-        pk_url_kwarg:        Parámetro de URL. Usa 'producto_id'
-                             para ser consistente con W02.
-    """
-
-    model               = Producto
-    template_name       = 'productos/detalle.html'
+    model = Producto
+    template_name = 'productos/detalle.html'
     context_object_name = 'producto'
-    pk_url_kwarg        = 'producto_id'
+    pk_url_kwarg = 'producto_id'
 
     def get_queryset(self):
-        """Pre-carga FKs para evitar queries adicionales en el template."""
         return Producto.objects.select_related('categoria', 'proveedor')
-
-# PROBLEMA — N+1 queries
-productos = Producto.objects.all()
-for p in productos:
-    print(p.categoria.nombre)   # 1 query por producto → N+1 total
-    print(p.proveedor.nombre)   # otro N+1
-
-# SOLUCIÓN — select_related (JOIN en una sola query)
-productos = Producto.objects.select_related('categoria', 'proveedor').all()
-for p in productos:
-    print(p.categoria.nombre)   # ya está en memoria — 0 queries extra
-def inicio(request):
-    """Vista de inicio de productos para compatibilidad con W02."""
-    return render(request, 'productos/index.html')
-# productos/views.py — agregar los imports al inicio del archivo:
-from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.urls import reverse_lazy
-from django.views.generic import (
-    CreateView, DeleteView, DetailView, ListView, UpdateView
-)
-
-from .forms import ProductoForm
 
 
 class ProductoCreateView(LoginRequiredMixin, CreateView):
-    """Formulario para crear un nuevo producto.
+    """Crea un producto."""
 
-    LoginRequiredMixin PRIMERO en la herencia (obligatorio).
-    Redirige a /accounts/login/ si el usuario no está autenticado.
-    """
-
-    model         = Producto
-    form_class    = ProductoForm
+    model = Producto
+    form_class = ProductoForm
     template_name = 'productos/crear.html'
-    success_url   = reverse_lazy('productos:lista')  # reverse_lazy (no reverse)
+    success_url = reverse_lazy('productos:lista')
 
     def form_valid(self, form):
-        """Agrega mensaje flash de éxito al guardar."""
         response = super().form_valid(form)
         messages.success(
             self.request,
@@ -102,13 +70,13 @@ class ProductoCreateView(LoginRequiredMixin, CreateView):
 
 
 class ProductoUpdateView(LoginRequiredMixin, UpdateView):
-    """Formulario para editar un producto existente."""
+    """Actualiza un producto existente."""
 
-    model         = Producto
-    form_class    = ProductoForm
+    model = Producto
+    form_class = ProductoForm
     template_name = 'productos/editar.html'
-    pk_url_kwarg  = 'producto_id'
-    success_url   = reverse_lazy('productos:lista')
+    pk_url_kwarg = 'producto_id'
+    success_url = reverse_lazy('productos:lista')
 
     def form_valid(self, form):
         response = super().form_valid(form)
@@ -120,19 +88,15 @@ class ProductoUpdateView(LoginRequiredMixin, UpdateView):
 
 
 class ProductoDeleteView(LoginRequiredMixin, DeleteView):
-    """Confirmación y borrado de un producto.
+    """Elimina un producto."""
 
-    SOLO acepta POST. El template debe incluir
-    un formulario con {% csrf_token %} para evitar CSRF.
-    """
-
-    model         = Producto
+    model = Producto
     template_name = 'productos/eliminar.html'
-    pk_url_kwarg  = 'producto_id'
-    success_url   = reverse_lazy('productos:lista')
+    pk_url_kwarg = 'producto_id'
+    success_url = reverse_lazy('productos:lista')
 
     def form_valid(self, form):
-        nombre   = self.object.nombre
+        nombre = self.object.nombre
         response = super().form_valid(form)
         messages.success(
             self.request,
