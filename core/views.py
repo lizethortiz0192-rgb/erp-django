@@ -1,57 +1,54 @@
 # core/views.py
-"""Vistas principales del proyecto ERP — W02.
+"""Vistas principales del ERP Django."""
 
-Migración: HttpResponse → render() con templates y contexto.
-"""
 from django.shortcuts import render
 from django.urls import reverse
 
 
 def bienvenida(request):
-    """Página de inicio del ERP con tarjetas de módulos.
+    """Página de inicio del ERP con tarjetas de módulos."""
 
-    Context:
-        modulos (list): Lista de dicts con icono, nombre, url y descripcion.
-
-    Returns:
-        HttpResponse con template bienvenida.html.
-    """
     modulos = [
         {
             'nombre': 'Productos',
+            'descripcion': 'Consulta el catálogo de productos.',
+            'url': reverse('productos:lista'),
             'icono': '📦',
-            'url': reverse('productos:inicio'),
-            'descripcion': 'Inventario, precios y stock',
         },
         {
             'nombre': 'Clientes',
+            'descripcion': 'Consulta la información de clientes.',
+            'url': reverse('clientes:lista'),
             'icono': '👥',
-            'url': reverse('clientes:inicio'),
-            'descripcion': 'Cartera y gestión de clientes',
         },
         {
             'nombre': 'Proveedores',
-            'icono': '🏭',
-            'url': reverse('proveedores:inicio'),
-            'descripcion': 'Red de proveedores',
+            'descripcion': 'Consulta el catálogo de proveedores.',
+            'url': reverse('proveedores:lista'),
+            'icono': '🏢',
         },
         {
             'nombre': 'Ventas',
-            'icono': '💰',
-            'url': reverse('ventas:inicio'),
-            'descripcion': 'Pedidos, facturas y cobros',
+            'descripcion': 'Consulta las ventas registradas.',
+            'url': reverse('ventas:lista'),
+            'icono': '🛒',
         },
         {
             'nombre': 'Reportes',
-            'icono': '📊',
+            'descripcion': 'Consulta los reportes del sistema.',
             'url': reverse('reportes:inicio'),
-            'descripcion': 'Dashboard y analítica',
+            'icono': '📊',
         },
         {
-            'nombre': 'Admin',
+            'nombre': 'Administración',
+            'descripcion': 'Accede al panel administrativo.',
+            'url': reverse('admin:index'),
             'icono': '⚙️',
-            'url': '/admin/',
-            'descripcion': 'Panel de administración Django',
         },
     ]
-    return render(request, 'bienvenida.html', {'modulos': modulos})
+
+    return render(
+        request,
+        'bienvenida.html',
+        {'modulos': modulos},
+    )
