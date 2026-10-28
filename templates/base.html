@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#490b0b">
+ 
+    <link rel="stylesheet" href="{% static 'aburaya_foto.css' %}">
 
     <title>{% block title %}LIZ SYSTEM{% endblock %} · SKZ</title>
-
+    
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -409,6 +411,8 @@
 </head>
 
 <body>
+
+{% include "partials/fondo_aburaya_foto.html" %}
 
 <!-- NAVBAR -->
 <nav class="erp-navbar">
