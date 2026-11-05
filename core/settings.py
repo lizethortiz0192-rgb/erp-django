@@ -202,6 +202,11 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
+# ── STRIPE (Pasarela de pago) ──────────────────────────────────────────────
+STRIPE_SECRET_KEY     = env('STRIPE_SECRET_KEY',     default='sk_test_placeholder')
+STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', default='pk_test_placeholder')
+STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='whsec_placeholder')
+
 # ============================================================
 # MODELOS
 # ============================================================
