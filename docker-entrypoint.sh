@@ -8,6 +8,9 @@ python manage.py migrate --noinput
 echo "==> [entrypoint] Creando grupos de permisos..."
 python manage.py crear_grupos || true
 
+echo "==> [entrypoint] Creando superusuario automatizado..."
+python manage.py createsuperuser --noinput || true
+
 echo "==> [entrypoint] Recolectando archivos estáticos..."
 python manage.py collectstatic --noinput --clear
 
