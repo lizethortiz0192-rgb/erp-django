@@ -37,3 +37,41 @@ CMD gunicorn core.wsgi \
     --workers 2 \
     --timeout 120 \
     --log-file -
+        # Dockerfile — ERP Django
+FROM python:3.11-slim-bookworm AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Instalar dependencias de sistema necesarias
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcairo2 \
+    libcairo-gobject2 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
+    fonts-liberation \
+    libpq-dev \
+    gcc \
+ && rm -rf /var/lib/apt/lists/*
+
+# Instalar dependencias de Python
+COPY requirements.txt .
+RUN pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
+
+# Copiar el código fuente del proyecto
+COPY . .
+
+# Dar permisos de ejecución al entrypoint
+RUN chmod +x docker-entrypoint.sh
+
+EXPOSE 8000
+
+# Punto de entrada obligatorio para ejecutar migraciones al arrancar
+ENTRYPOINT ["./docker-entrypoint.sh"]

@@ -1,5 +1,4 @@
 #!/bin/sh
-# docker-entrypoint.sh
 set -e
 
 echo "==> [entrypoint] Ejecutando migraciones de base de datos..."
