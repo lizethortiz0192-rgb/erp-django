@@ -29,8 +29,8 @@ def enviar_confirmacion_pedido(self, pedido_id: int) -> dict:
     """Envía el correo de confirmación de pedido al cliente.
 
     Garantías:
-        - Idempotente: si correo_enviado=True, aborta sin error.
-        - Retry automático hasta 3 veces en caso de fallo de SendGrid.
+    - Idempotente: si correo_enviado=True, aborta sin error.
+    - Retry automático hasta 3 veces en caso de fallo de SendGrid.
 
     Args:
         pedido_id: ID del Pedido confirmado.
@@ -61,10 +61,18 @@ def enviar_confirmacion_pedido(self, pedido_id: int) -> dict:
             'razon':     'correo ya enviado',
         }
 
+    # ── Validar que el cliente tenga un correo válido ───────────────────
+    correo_destino = (pedido.cliente.correo or '').strip()
+    if not correo_destino or '@' not in correo_destino:
+        logger.error(
+            f'[correo_confirmacion] Pedido {pedido.numero_pedido}: '
+            f'el cliente no tiene un correo válido ("{correo_destino}").'
+        )
+        return {'estado': 'error', 'razon': 'Cliente sin correo válido'}
+
     config = ConfiguracionERP.get_instance()
 
     # ── Construir contexto del correo ───────────────────────────────────
-    # Procesar items para formatear precio, cantidad y subtotal
     items_raw = pedido.items_snapshot or []
     items = []
     for item in items_raw:
@@ -107,14 +115,13 @@ def enviar_confirmacion_pedido(self, pedido_id: int) -> dict:
     )
 
     # ── Construir el correo ────────────────────────────────────────────
-    correo_destino = pedido.cliente.correo
-    correo_origen  = settings.DEFAULT_FROM_EMAIL
+    correo_origen = settings.DEFAULT_FROM_EMAIL
 
     mensaje = EmailMultiAlternatives(
-        subject      = asunto,
-        body         = texto_plano,      # versión texto plano (fallback)
-        from_email   = correo_origen,
-        to           = [correo_destino],
+        subject    = asunto,
+        body       = texto_plano,      # versión texto plano (fallback)
+        from_email = correo_origen,
+        to         = [correo_destino],
     )
     mensaje.attach_alternative(html_body, 'text/html')
 
@@ -141,8 +148,12 @@ def enviar_confirmacion_pedido(self, pedido_id: int) -> dict:
             f'[correo_confirmacion] Error al enviar correo para pedido '
             f'{pedido.numero_pedido}: {exc}'
         )
+        # Si corre sin Redis (modo eager en Render), no intentar reintentar en cola
+        if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False):
+            return {'estado': 'error', 'razon': str(exc)}
         # Reintento automático con Celery (hasta max_retries=3)
         raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+
 
 @shared_task(
     bind=True,
@@ -240,7 +251,7 @@ def _enviar_alerta_stock(productos_bajos: list, umbral: int) -> None:
         )
     except Exception as exc:
         logger.error(f'[stock_bajo] Error al enviar alerta: {exc}')
-        # ventas/tasks.py — agregar al final del archivo
+
 
 @shared_task(
     bind=True,
@@ -254,9 +265,9 @@ def reporte_ventas_diario(self) -> dict:
     mediante Celery Beat (configurado en CELERY_BEAT_SCHEDULE).
 
     Cálculos realizados en SQL (no en Python) para máxima eficiencia:
-        - Total de pedidos pagados hoy
-        - Total facturado (suma de total_pagado)
-        - Top 5 productos por ingreso del día
+    - Total de pedidos pagados hoy
+    - Total facturado (suma de total_pagado)
+    - Top 5 productos por ingreso del día
 
     Returns:
         dict con total_pedidos, total_facturado y top_productos.
