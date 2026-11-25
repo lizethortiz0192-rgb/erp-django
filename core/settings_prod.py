@@ -1,5 +1,4 @@
-﻿
-# core/settings_prod.py
+﻿# core/settings_prod.py
 """Configuración de producción para Render.com."""
 
 from .settings import *
@@ -40,6 +39,8 @@ for host in _extra_hosts:
         CSRF_TRUSTED_ORIGINS.append(f'https://{host}')
 
 # SEGURIDAD HTTPS
+# Render termina el HTTPS en su proxy: Django debe confiar en este encabezado
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_SSL_REDIRECT = True
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
@@ -151,8 +152,25 @@ JAZZMIN_UI_TWEAKS = {
     },
 }
 
-# En producción, Celery utiliza Redis
-CELERY_TASK_ALWAYS_EAGER = True
-CELERY_TASK_EAGER_PROPAGATES = True
-CELERY_TASK_STORE_EAGER_RESULT = True
+# ── CELERY EN PRODUCCIÓN ──────────────────────────────────────────────────
+# Si REDIS_URL apunta a un Redis real (Key Value de Render), las tareas van
+# al worker y Beat las programa. Si falta o apunta a localhost, las tareas
+# se ejecutan dentro de la propia web y NO se intenta guardar el resultado
+# en Redis (ese era el error "Connection refused" de localhost:6379).
+_redis_url = os.environ.get('REDIS_URL', '')
+_redis_real = bool(_redis_url) and not any(
+    h in _redis_url for h in ('localhost', '127.0.0.1')
+)
+
+if _redis_real:
+    CELERY_BROKER_URL = _redis_url
+    CELERY_RESULT_BACKEND = _redis_url
+    CELERY_TASK_ALWAYS_EAGER = False
+    CELERY_TASK_EAGER_PROPAGATES = False
+else:
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = False
+    CELERY_TASK_STORE_EAGER_RESULT = False
+    CELERY_RESULT_BACKEND = None
+
 EMAIL_BACKEND = 'anymail.backends.sendgrid.EmailBackend'
