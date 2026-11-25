@@ -2,20 +2,17 @@
 """
 Vistas del módulo de catálogo y carrito — W13/W14/W16.
 
-Módulo público (no requiere autenticación para lectura).
-El carrito se almacena en la sesión Django.
-
-W16: Integración de tareas asíncronas con Celery para
-enviar correos de confirmación después de un pago exitoso.
-
-Inventario:
-- El stock se descuenta después de verificar el pago en Stripe.
-- El pedido cambia de pendiente a pagado.
-- Se evita descontar dos veces el mismo pedido.
+Incluye:
+- Catálogo público y filtros.
+- Administración del carrito mediante sesiones.
+- Integración de pagos con Stripe.
+- Confirmación de pedidos.
+- Descuento seguro del inventario.
+- Envío asíncrono de correos mediante Celery.
 """
 
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import stripe
 
@@ -39,17 +36,14 @@ from .checkout_utils import (
 )
 
 
-# ── REGISTRO DE ERRORES ────────────────────────────────────────────────
-
 logger = logging.getLogger(__name__)
-
-
-# ── CONFIGURACIÓN DE STRIPE ────────────────────────────────────────────
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-# ── CATÁLOGO ───────────────────────────────────────────────────────────
+# ============================================================
+# CATÁLOGO
+# ============================================================
 
 class CatalogoView(ListView):
     """Catálogo público de productos con filtros."""
@@ -83,17 +77,18 @@ class CatalogoView(ListView):
         return ctx
 
 
-# ── CARRITO ─────────────────────────────────────────────────────────────
-
+# ============================================================
+# CARRITO
+# ============================================================
 
 def _obtener_carrito(request):
-    """Obtiene el carrito de la sesión o crea uno vacío."""
+    """Obtiene el carrito de la sesión."""
 
     return request.session.get('carrito', {})
 
 
 def _guardar_carrito(request, carrito):
-    """Guarda el carrito de la sesión."""
+    """Guarda los cambios del carrito en la sesión."""
 
     request.session['carrito'] = carrito
     request.session.modified = True
@@ -110,8 +105,8 @@ def ver_carrito(request):
     for prod_id, datos in carrito.items():
         precio = Decimal(str(datos['precio']))
         cantidad = int(datos['cantidad'])
-        subtotal = precio * cantidad
 
+        subtotal = precio * cantidad
         total += subtotal
 
         items.append({
@@ -134,7 +129,7 @@ def ver_carrito(request):
 
 
 def agregar_al_carrito(request, producto_id: int):
-    """Agrega un producto al carrito o incrementa su cantidad."""
+    """Agrega un producto al carrito."""
 
     if request.method != 'POST':
         return redirect('catalogo:catalogo')
@@ -242,29 +237,23 @@ def actualizar_cantidad(request, producto_id: int):
 
 
 def vaciar_carrito(request):
-    """Elimina todos los productos del carrito."""
+    """Vacía el carrito."""
 
     if request.method == 'POST':
         _guardar_carrito(request, {})
 
-        messages.info(
-            request,
-            'Carrito vaciado.'
-        )
+        messages.info(request, 'Carrito vaciado.')
 
     return redirect('catalogo:carrito')
 
 
-# ── CHECKOUT ────────────────────────────────────────────────────────────
-
+# ============================================================
+# CHECKOUT
+# ============================================================
 
 @login_required
 def checkout(request):
-    """Proceso de pago mediante Stripe.
-
-    GET: Muestra el resumen del carrito.
-    POST: Crea el pedido y genera el PaymentIntent.
-    """
+    """Prepara el pedido y crea el PaymentIntent de Stripe."""
 
     carrito = _obtener_carrito(request)
 
@@ -275,21 +264,18 @@ def checkout(request):
         )
         return redirect('catalogo:catalogo')
 
-    # Comprobar configuración de Stripe.
     publishable_key = settings.STRIPE_PUBLISHABLE_KEY
     secret_key = settings.STRIPE_SECRET_KEY
 
     if not secret_key or not publishable_key:
         logger.error(
-            'Stripe no está configurado: faltan las claves '
-            'STRIPE_SECRET_KEY o STRIPE_PUBLISHABLE_KEY.'
+            'Faltan las claves de configuración de Stripe.'
         )
 
         messages.error(
             request,
             'El servicio de pago no está disponible temporalmente.'
         )
-
         return redirect('catalogo:pago_error')
 
     # Calcular totales.
@@ -312,10 +298,9 @@ def checkout(request):
             request,
             'No fue posible calcular el total del carrito.'
         )
-
         return redirect('catalogo:pago_error')
 
-    # Preparar productos para el resumen.
+    # Preparar los productos.
     items_checkout = []
 
     try:
@@ -324,7 +309,9 @@ def checkout(request):
             cantidad = int(datos['cantidad'])
 
             if precio < 0 or cantidad <= 0:
-                raise ValueError('Precio o cantidad inválidos.')
+                raise ValueError(
+                    'Precio o cantidad inválidos.'
+                )
 
             subtotal = precio * cantidad
 
@@ -337,7 +324,7 @@ def checkout(request):
                 'imagen': datos.get('imagen'),
             })
 
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, InvalidOperation):
         logger.exception(
             'El carrito contiene información inválida.'
         )
@@ -346,23 +333,18 @@ def checkout(request):
             request,
             'Hay información inválida en tu carrito.'
         )
-
         return redirect('catalogo:carrito')
 
-    # ── POST: PROCESAR PAGO ─────────────────────────────────────────
-
+    # POST: crear pedido y PaymentIntent.
     if request.method == 'POST':
 
         pedido = None
+        intent = None
 
         try:
-            # Configurar la clave para esta solicitud.
             stripe.api_key = secret_key
 
-            # 1. Obtener o crear cliente ERP.
             cliente = obtener_o_crear_cliente(request.user)
-
-            # 2. Crear el Pedido con snapshot del carrito.
             numero = generar_numero_pedido()
 
             snapshot = [
@@ -370,7 +352,7 @@ def checkout(request):
                     'producto_id': int(prod_id),
                     'nombre': datos['nombre'],
                     'cantidad': int(datos['cantidad']),
-                    'precio': datos['precio'],
+                    'precio': str(datos['precio']),
                 }
                 for prod_id, datos in carrito.items()
             ]
@@ -383,14 +365,12 @@ def checkout(request):
                 items_snapshot=snapshot,
             )
 
-            # 3. Convertir el total a centavos.
             monto_centavos = int(
                 (totales['total'] * 100).quantize(
                     Decimal('1')
                 )
             )
 
-            # 4. Crear PaymentIntent.
             intent = stripe.PaymentIntent.create(
                 amount=monto_centavos,
                 currency='mxn',
@@ -402,24 +382,32 @@ def checkout(request):
                 idempotency_key=f'pedido-{pedido.pk}',
             )
 
-            # 5. Guardar la referencia del pago en la sesión.
+            pedido.stripe_payment_intent_id = intent.id
+            pedido.save(update_fields=['stripe_payment_intent_id'])
+
+            logger.info(
+                'PaymentIntent %s guardado en pedido %s.',
+                intent.id,
+                pedido.numero_pedido
+            )
+
+            # Guardar PaymentIntent en la sesión.
             pagos = request.session.get(
                 'stripe_payment_intents',
                 {}
             )
 
-            pagos[str(pedido.pk)] = str(intent.id)
+            pagos[str(pedido.pk)] = intent.id
 
             request.session['stripe_payment_intents'] = pagos
             request.session.modified = True
 
             logger.info(
-                'PaymentIntent creado correctamente para '
-                'el pedido %s.',
+                'PaymentIntent %s creado para pedido %s.',
+                intent.id,
                 pedido.numero_pedido
             )
 
-            # 6. Mostrar formulario de pago.
             return render(
                 request,
                 'catalogo/checkout.html',
@@ -433,46 +421,55 @@ def checkout(request):
                 }
             )
 
-        except stripe.error.StripeError as exc:
-
+        except stripe.error.StripeError:
             logger.exception(
                 'Error de Stripe durante el checkout.'
             )
 
             if pedido is not None:
-                pedido.delete()
-
-            mensaje = (
-                getattr(exc, 'user_message', None)
-                or 'No fue posible conectar con el servicio de pago.'
-            )
+                logger.warning(
+                    'Se conserva el pedido pendiente %s para revision.',
+                    pedido.numero_pedido
+                )
+                if intent is not None:
+                    logger.error(
+                        'PaymentIntent del pedido %s: %s',
+                        pedido.numero_pedido,
+                        intent.id
+                    )
 
             messages.error(
                 request,
-                mensaje
+                'No fue posible conectar con el servicio de pago.'
             )
 
             return redirect('catalogo:pago_error')
 
         except Exception:
-
             logger.exception(
-                'ERROR COMPLETO DURANTE EL CHECKOUT'
+                'Error inesperado durante el checkout.'
             )
 
             if pedido is not None:
-                pedido.delete()
+                logger.warning(
+                    'Se conserva el pedido pendiente %s para revision.',
+                    pedido.numero_pedido
+                )
+                if intent is not None:
+                    logger.error(
+                        'PaymentIntent del pedido %s: %s',
+                        pedido.numero_pedido,
+                        intent.id
+                    )
 
             messages.error(
                 request,
-                'No se pudo iniciar el pago. '
-                'Inténtalo nuevamente.'
+                'No se pudo iniciar el pago. Inténtalo nuevamente.'
             )
 
             return redirect('catalogo:pago_error')
 
-    # ── GET: MOSTRAR RESUMEN SIN CREAR PAYMENTINTENT ────────────────
-
+    # GET: mostrar resumen.
     return render(
         request,
         'catalogo/checkout.html',
@@ -487,54 +484,86 @@ def checkout(request):
     )
 
 
-# ── CONFIRMACIÓN DE PAGO — W14/W16 ─────────────────────────────────────
-
+# ============================================================
+# CONFIRMACIÓN DE PAGO
+# ============================================================
 
 @login_required
 def pago_exitoso(request, pedido_id: int):
-    """Vista de confirmación post-pago exitoso — W16.
-
-    Cambios respecto a W14:
-        Dispara la tarea asíncrona de correo con .delay().
-        La tarea se encola en Redis y el worker la procesa
-        en segundo plano, sin bloquear esta respuesta HTTP.
     """
-    from django.shortcuts import get_object_or_404
-    pedido = get_object_or_404(Pedido, pk=pedido_id)
+    Verifica el PaymentIntent directamente en Stripe.
+    Confirma el pedido y descuenta el inventario una sola vez.
+    """
 
-    # Vaciar el carrito de la sesión
-    _guardar_carrito(request, {})
-
-    # ── NUEVO W16: disparar tarea asíncrona de confirmación ───────────
-    # .delay() envía la tarea al broker Redis de forma no bloqueante.
-    # El worker la ejecutará en segundo plano.
-    enviar_confirmacion_pedido.delay(pedido.pk)
-    # ──────────────────────────────────────────────────────────────────
-
-    messages.success(
-        request,
-        f'¡Pago exitoso! Tu pedido {pedido.numero_pedido} '
-        f'está confirmado. Recibirás un correo de confirmación pronto.'
+    pedido = get_object_or_404(
+        Pedido,
+        pk=pedido_id
     )
 
-    return render(request, 'catalogo/pago_exitoso.html', {
-        'pedido': pedido,
-    })
+    # Si el pedido ya está pagado, no repetir operaciones.
+    if pedido.estado == 'pagado':
+        _guardar_carrito(request, {})
 
-    # ── 1. VERIFICAR EL PAGO EN STRIPE ─────────────────────────────
+        return render(
+            request,
+            'catalogo/pago_exitoso.html',
+            {'pedido': pedido}
+        )
+
+    # Recuperar el ID del PaymentIntent.
+    pagos = request.session.get(
+        'stripe_payment_intents',
+        {}
+    )
+
+    intent_id = (
+        request.GET.get('payment_intent_id')
+        or pagos.get(str(pedido.pk))
+    )
+
+    if not intent_id:
+        logger.warning(
+            'No se encontró PaymentIntent para pedido %s.',
+            pedido.numero_pedido
+        )
+
+        messages.error(
+            request,
+            'No se encontró la referencia del pago. '
+            'No vuelvas a realizar el cobro; solicita una revisión.'
+        )
+
+        return redirect('catalogo:pago_error')
+
+    # --------------------------------------------------------
+    # 1. VERIFICAR PAGO EN STRIPE
+    # --------------------------------------------------------
 
     try:
         stripe.api_key = settings.STRIPE_SECRET_KEY
 
-        # Recuperar el PaymentIntent directamente desde Stripe.
+        if not stripe.api_key:
+            raise ValueError(
+                'No está configurada la clave secreta de Stripe.'
+            )
+
+        # Consultar el PaymentIntent directamente en Stripe.
         intent = stripe.PaymentIntent.retrieve(intent_id)
 
-        # Convertir metadata a un diccionario normal.
-        metadata = (
-            dict(intent.metadata)
-            if intent.metadata
-            else {}
-        )
+        # CORRECCIÓN: convertir correctamente los metadatos.
+        metadata_raw = intent.metadata
+
+        if metadata_raw is None:
+            metadata = {}
+
+        elif hasattr(metadata_raw, 'to_dict'):
+            metadata = metadata_raw.to_dict()
+
+        elif isinstance(metadata_raw, dict):
+            metadata = metadata_raw
+
+        else:
+            metadata = {}
 
         # Calcular el importe esperado en centavos.
         importe_esperado = int(
@@ -543,74 +572,90 @@ def pago_exitoso(request, pedido_id: int):
             )
         )
 
-        # Validar estado, pedido, importe y moneda.
-        if (
-            intent.status != 'succeeded'
-            or str(metadata.get('pedido_id')) != str(pedido.pk)
-            or int(intent.amount_received or 0) != importe_esperado
-            or intent.currency.lower() != 'mxn'
-        ):
+        importe_recibido = int(
+            intent.amount_received or 0
+        )
+
+        moneda = (intent.currency or '').lower()
+
+        # Comprobar que el pago pertenece a este pedido.
+        pago_valido = (
+            intent.status == 'succeeded'
+            and str(metadata.get('pedido_id')) == str(pedido.pk)
+            and importe_recibido == importe_esperado
+            and moneda == 'mxn'
+        )
+
+        if not pago_valido:
             logger.warning(
-                'Pago no válido para el pedido %s. '
-                'Estado: %s. Importe recibido: %s.',
+                'Pago no válido. Pedido: %s. '
+                'PaymentIntent: %s. Estado: %s. '
+                'Importe recibido: %s. Importe esperado: %s. '
+                'Moneda: %s. Pedido en metadata: %s.',
                 pedido.numero_pedido,
+                intent_id,
                 intent.status,
-                intent.amount_received
+                importe_recibido,
+                importe_esperado,
+                moneda,
+                metadata.get('pedido_id')
             )
 
             messages.error(
                 request,
-                'El pago todavía no ha sido confirmado '
-                'o los datos del pago no coinciden.'
+                'Stripe todavía no confirma el pago '
+                'o los datos del pago no coinciden. '
+                'No vuelvas a realizar el cobro.'
             )
 
             return redirect('catalogo:pago_error')
 
     except stripe.error.StripeError:
         logger.exception(
-            'No se pudo verificar el PaymentIntent del pedido %s.',
+            'Error de Stripe al verificar pedido %s.',
             pedido.numero_pedido
         )
 
         messages.error(
             request,
-            'No fue posible verificar el pago.'
+            'No fue posible verificar el pago. '
+            'No vuelvas a realizar el cobro.'
         )
 
         return redirect('catalogo:pago_error')
 
     except Exception:
         logger.exception(
-            'Error inesperado al verificar el pago del pedido %s.',
+            'Error inesperado al verificar pedido %s.',
             pedido.numero_pedido
         )
 
         messages.error(
             request,
-            'Ocurrió un error al verificar el pago.'
+            'Ocurrió un error al verificar el pago. '
+            'No vuelvas a realizar el cobro.'
         )
 
         return redirect('catalogo:pago_error')
 
-    # ── 2. CONFIRMAR PEDIDO Y DESCONTAR INVENTARIO ──────────────────
+    # --------------------------------------------------------
+    # 2. CONFIRMAR PEDIDO Y DESCONTAR INVENTARIO
+    # --------------------------------------------------------
 
     pedido_confirmado_ahora = False
 
     try:
         with transaction.atomic():
 
-            # Solo una solicitud puede cambiar el pedido
-            # de pendiente a pagado.
-            actualizado = Pedido.objects.filter(
-                pk=pedido.pk,
-                estado='pendiente'
-            ).update(
-                estado='pagado'
+            pedido_bloqueado = (
+                Pedido.objects
+                .select_for_update()
+                .get(pk=pedido.pk)
             )
 
-            if actualizado:
+            if pedido_bloqueado.estado == 'pendiente':
 
-                snapshot = pedido.items_snapshot
+                snapshot = pedido_bloqueado.items_snapshot
 
                 if not isinstance(snapshot, list) or not snapshot:
                     raise ValueError(
@@ -619,62 +664,60 @@ def pago_exitoso(request, pedido_id: int):
 
                 for item in snapshot:
 
-                    try:
-                        producto_id = int(item['producto_id'])
-                        cantidad = int(item['cantidad'])
-                    except (KeyError, TypeError, ValueError):
-                        raise ValueError(
-                            'Los datos de un producto del pedido '
-                            'son inválidos.'
-                        )
+                    producto_id = int(item['producto_id'])
+                    cantidad = int(item['cantidad'])
 
                     if producto_id <= 0 or cantidad <= 0:
                         raise ValueError(
                             'El producto o la cantidad no son válidos.'
                         )
 
-                    # Descontar solamente si existe stock suficiente.
-                    filas_actualizadas = Producto.objects.filter(
+                    filas = Producto.objects.filter(
                         pk=producto_id,
                         stock__gte=cantidad
                     ).update(
                         stock=F('stock') - cantidad
                     )
 
-                    if filas_actualizadas == 0:
+                    if filas == 0:
                         raise ValueError(
                             f'No hay stock suficiente del producto '
                             f'ID {producto_id}.'
                         )
 
+                pedido_bloqueado.estado = 'pagado'
+
+                pedido_bloqueado.save(
+                    update_fields=['estado']
+                )
+
                 pedido_confirmado_ahora = True
 
-            else:
-                # Otra solicitud pudo haber confirmado el pedido.
-                pedido.refresh_from_db()
-
-                if pedido.estado != 'pagado':
-                    raise ValueError(
-                        'El pedido ya no está pendiente de pago.'
-                    )
+            elif pedido_bloqueado.estado != 'pagado':
+                raise ValueError(
+                    'El pedido no está pendiente ni pagado.'
+                )
 
         pedido.refresh_from_db()
 
     except Exception:
         logger.exception(
-            'No se pudo actualizar el inventario del pedido %s.',
+            'Error al confirmar pedido o actualizar inventario: %s.',
             pedido.numero_pedido
         )
 
         messages.error(
             request,
-            'Stripe confirmó el pago, pero hubo un problema al '
-            'actualizar el inventario. El pedido necesita revisión.'
+            'Stripe confirmó el pago, pero hubo un problema '
+            'al actualizar el pedido o el inventario. '
+            'No vuelvas a pagar; el pedido necesita revisión.'
         )
 
         return redirect('catalogo:pago_error')
 
-    # ── 3. LIMPIAR EL CARRITO ──────────────────────────────────────
+    # --------------------------------------------------------
+    # 3. LIMPIAR CARRITO Y REFERENCIA DE PAGO
+    # --------------------------------------------------------
 
     _guardar_carrito(request, {})
 
@@ -683,27 +726,35 @@ def pago_exitoso(request, pedido_id: int):
     request.session['stripe_payment_intents'] = pagos
     request.session.modified = True
 
-    # ── 4. ENVIAR CORREO CON CELERY ────────────────────────────────
+    # --------------------------------------------------------
+    # 4. PROGRAMAR CORREO CON CELERY
+    # --------------------------------------------------------
 
     if pedido_confirmado_ahora:
         try:
-            enviar_confirmacion_pedido.delay(pedido.pk)
+            enviar_confirmacion_pedido.delay(
+                pedido.pk
+            )
 
             logger.info(
-                'Tarea de confirmación enviada para el pedido %s.',
+                'Correo de confirmación programado para pedido %s.',
                 pedido.numero_pedido
             )
 
         except Exception:
             logger.exception(
-                'No se pudo encolar el correo del pedido %s.',
+                'No se pudo programar el correo del pedido %s.',
                 pedido.numero_pedido
             )
+
+    # --------------------------------------------------------
+    # 5. MOSTRAR CONFIRMACIÓN
+    # --------------------------------------------------------
 
     messages.success(
         request,
         f'¡Pago exitoso! Tu pedido {pedido.numero_pedido} '
-        f'está confirmado. Recibirás un correo de confirmación pronto.'
+        'está confirmado. Recibirás un correo de confirmación pronto.'
     )
 
     return render(
@@ -715,8 +766,9 @@ def pago_exitoso(request, pedido_id: int):
     )
 
 
-# ── ERROR DE PAGO ──────────────────────────────────────────────────────
-
+# ============================================================
+# ERROR DE PAGO
+# ============================================================
 
 def pago_error(request):
     """Muestra la página de error de pago."""

@@ -1,5 +1,6 @@
 
 {% extends "base.html" %}
+
 {% block title %}Checkout · Proceso de pago{% endblock %}
 
 {% block extra_css %}
@@ -65,7 +66,6 @@
                 {% for datos in items %}
 
                 <tr>
-
                     <td style="padding:.4rem 0;font-size:.9rem;">
 
                         {{ datos.nombre }}
@@ -79,11 +79,9 @@
                     <td style="text-align:right;font-weight:600;font-size:.9rem;padding:.4rem 0;">
                         ${{ datos.subtotal|floatformat:2 }}
                     </td>
-
                 </tr>
 
                 {% endfor %}
-
 
                 <tr style="border-top:1px solid var(--clr-border);">
 
@@ -97,7 +95,6 @@
 
                 </tr>
 
-
                 <tr>
 
                     <td style="padding:.3rem 0;color:var(--clr-muted);font-size:.88rem;">
@@ -109,7 +106,6 @@
                     </td>
 
                 </tr>
-
 
                 <tr style="border-top:2px solid var(--clr-gold);">
 
@@ -177,12 +173,13 @@
 
                 <div id="card-element"></div>
 
-                <div id="card-errors" role="alert"></div>
+                <div id="card-errors" role="alert" aria-live="polite"></div>
 
             </div>
 
 
-            <button id="submit-btn"
+            <button type="button"
+                    id="submit-btn"
                     class="btn-erp-gold"
                     style="width:100%;padding:.6rem;font-size:1rem;">
 
@@ -240,7 +237,7 @@
 
 {% block extra_js %}
 
-{% if client_secret %}
+{% if client_secret and pedido %}
 
 <script src="https://js.stripe.com/v3/"></script>
 
@@ -249,15 +246,26 @@
 
     'use strict';
 
+    // Configuración de Stripe.
     const stripe = Stripe('{{ publishable_key|escapejs }}');
 
     const elements = stripe.elements();
 
     const clientSecret = '{{ client_secret|escapejs }}';
 
+    // URL generada por Django para el pedido actual.
+    const successUrl = "{% url 'catalogo:pago_exitoso' pedido.pk %}";
 
-    // Crear elemento de tarjeta
+    // Elemento donde se mostrarán los errores.
+    const errorDiv = document.getElementById('card-errors');
 
+    // Botón de pago.
+    const btn = document.getElementById('submit-btn');
+
+    const originalButtonText = btn.textContent.trim();
+
+
+    // Crear el campo de tarjeta.
     const card = elements.create('card', {
 
         style: {
@@ -273,28 +281,26 @@
 
                 '::placeholder': {
                     color: '#8AA0B8'
-                },
+                }
 
             },
 
             invalid: {
                 color: '#C0392B',
                 iconColor: '#C0392B'
-            },
+            }
 
-        },
+        }
 
     });
 
 
+    // Mostrar el campo de tarjeta.
     card.mount('#card-element');
 
 
-    // Mostrar errores de tarjeta
-
+    // Mostrar errores de validación de tarjeta.
     card.on('change', function (event) {
-
-        const errorDiv = document.getElementById('card-errors');
 
         errorDiv.textContent = event.error
             ? event.error.message
@@ -303,80 +309,103 @@
     });
 
 
-    // Procesar pago
-
-    const btn = document.getElementById('submit-btn');
-
+    // Procesar el pago.
     btn.addEventListener('click', async function (event) {
 
         event.preventDefault();
 
-        btn.disabled = true;
+        // Evitar múltiples solicitudes.
+        if (btn.disabled) {
+            return;
+        }
 
-        btn.textContent = '⏳ Procesando…';
+        btn.disabled = true;
+        btn.textContent = '⏳ Procesando pago...';
+
+        errorDiv.textContent = '';
 
 
         try {
 
-            const { error, paymentIntent } =
-                await stripe.confirmCardPayment(
-
-                    clientSecret,
-
-                    {
-                        payment_method: {
-                            card: card
-                        }
+            const result = await stripe.confirmCardPayment(
+                clientSecret,
+                {
+                    payment_method: {
+                        card: card
                     }
+                }
+            );
 
+
+            // Comprobar errores devueltos por Stripe.
+            if (result.error) {
+
+                errorDiv.textContent =
+                    result.error.message || 'No fue posible procesar el pago.';
+
+                btn.disabled = false;
+                btn.textContent = originalButtonText;
+
+                return;
+            }
+
+
+            // Recuperar el PaymentIntent.
+            const paymentIntent = result.paymentIntent;
+
+
+            if (!paymentIntent) {
+
+                errorDiv.textContent =
+                    'Stripe no devolvió información del pago.';
+
+                btn.disabled = false;
+                btn.textContent = originalButtonText;
+
+                return;
+            }
+
+
+            // Redirigir únicamente cuando Stripe confirma el pago.
+            if (paymentIntent.status === 'succeeded') {
+
+                btn.textContent = '✓ Pago confirmado. Verificando pedido...';
+
+                // Enviar el ID del PaymentIntent a Django.
+                const url = new URL(
+                    successUrl,
+                    window.location.origin
                 );
 
+                url.searchParams.set(
+                    'payment_intent_id',
+                    paymentIntent.id
+                );
 
-            if (error) {
+                window.location.assign(url.toString());
 
-                document.getElementById('card-errors').textContent =
-                    error.message;
-
-                btn.disabled = false;
-
-                btn.textContent =
-                    '🔐 Confirmar pago de ${{ totales.total|floatformat:2 }}';
-
+                return;
             }
 
-            else if (paymentIntent.status === 'succeeded') {
 
-                const pedidoId = '{{ pedido.pk }}';
+            // Otros estados de pago.
+            errorDiv.textContent =
+                'El pago todavía no ha sido confirmado. Estado: ' +
+                paymentIntent.status;
 
-                window.location.href =
-                    `/catalogo/pago-exitoso/${pedidoId}/`;
+            btn.disabled = false;
+            btn.textContent = originalButtonText;
 
-            }
 
-            else {
+        } catch (error) {
 
-                document.getElementById('card-errors').textContent =
-                    'El pago no pudo confirmarse. Estado: ' +
-                    paymentIntent.status;
+            console.error('Error al procesar el pago:', error);
 
-                btn.disabled = false;
-
-                btn.textContent =
-                    '🔐 Confirmar pago de ${{ totales.total|floatformat:2 }}';
-
-            }
-
-        }
-
-        catch (error) {
-
-            document.getElementById('card-errors').textContent =
+            errorDiv.textContent =
                 error.message || 'Ocurrió un error al procesar el pago.';
 
             btn.disabled = false;
-
-            btn.textContent =
-                '🔐 Confirmar pago de ${{ totales.total|floatformat:2 }}';
+            btn.textContent = originalButtonText;
 
         }
 

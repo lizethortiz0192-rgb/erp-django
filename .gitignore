@@ -24,3 +24,39 @@ media/
 # Sistema operativo
 Thumbs.db
 .DS_Store
+# Otros entornos virtuales
+.venv/
+
+# Credenciales adicionales
+.env.*
+
+# Bases de datos locales
+*.sqlite3
+*.sqlite3-journal
+
+# Archivos temporales de Celery
+celerybeat-schedule*
+celerybeat.pid
+
+# Ejecutables
+*.exe
+
+# Respaldos
+*.backup*
+*_respaldo*.py
+catalogo/views.py.backup_*
+
+# Diagnosticos locales
+base_local.txt
+detalle_local.txt
+detalle_ventas_local.txt
+diferencias_settings.txt
+forms_local.txt
+prueba_sync.txt
+resultado_pruebas.txt
+settings_local.txt
+ventas_views_local.txt
+
+# Archivos temporales adicionales
+erp-django-utec
+tests/__init__.p

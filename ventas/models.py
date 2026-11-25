@@ -139,6 +139,17 @@ class Pedido(models.Model):
         validators=[MinValueValidator(Decimal('0.00'))],
         verbose_name='Total pagado',
     )
+
+    # Referencia permanente del pago en Stripe.
+    stripe_payment_intent_id = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+        verbose_name='ID de pago de Stripe',
+        help_text='Identificador del PaymentIntent asociado al pedido.',
+    )
+
     items_snapshot = models.JSONField(
         default=list,
         blank=True,
@@ -147,7 +158,12 @@ class Pedido(models.Model):
             'Copia del carrito al momento de crear el pedido. '
             'Estructura: [{"producto_id": 1, "nombre": "...", '
             '"cantidad": 2, "precio": "500.00"}]'
-        )
+        ),
+    )
+    correo_enviado = models.BooleanField(
+        default=False,
+        verbose_name='Correo de confirmación enviado',
+        help_text='True cuando se envió el correo de confirmación al cliente.',
     )
 
     class Meta:

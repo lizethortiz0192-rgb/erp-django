@@ -1,5 +1,6 @@
 import environ
 from pathlib import Path
+from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,6 +22,7 @@ ALLOWED_HOSTS = env.list(
 
 # Aplicaciones instaladas
 INSTALLED_APPS = [
+    'anymail',
     'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -150,7 +152,36 @@ STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', default='')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+# core/settings.py — configuración de correo electrónico
 
+# ── CORREO ELECTRÓNICO ────────────────────────────────────────────────────
+# En desarrollo: usar el backend de consola (imprime en terminal)
+# En producción: anymail con SendGrid
+EMAIL_BACKEND = env(
+    'EMAIL_BACKEND',
+    default='django.core.mail.backends.console.EmailBackend'
+)
+
+# Dirección del remitente visible en los correos
+DEFAULT_FROM_EMAIL = env(
+    'DEFAULT_FROM_EMAIL',
+    default='ERP Django <noreply@erp-django.com>'
+)
+
+# Nombre del asunto con prefijo del sistema
+EMAIL_SUBJECT_PREFIX = '[ERP Django] '
+
+# Administradores que reciben alertas del sistema
+ADMINS = [
+    ('Admin ERP', env('ADMIN_EMAIL', default='admin@erp-django.com')),
+]
+
+# Configuración de django-anymail (SendGrid)
+SENDGRID_API_KEY = env('SENDGRID_API_KEY', default='')
+# Déjalo exactamente así:
+ANYMAIL = {
+    'SENDGRID_API_KEY': SENDGRID_API_KEY,
+}
 # Jazzmin - LIZ SYSTEM
 JAZZMIN_SETTINGS = {
     'site_title': 'LIZ SYSTEM',
@@ -274,10 +305,39 @@ CELERY_TASK_DEFAULT_QUEUE = 'erp_django'
 
 # Para tests: ejecutar tareas sincrónicamente (sin worker)
 # Se activa en tests con @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
-CELERY_TASK_ALWAYS_EAGER         = False
+CELERY_TASK_ALWAYS_EAGER = env.bool(
+    'CELERY_TASK_ALWAYS_EAGER',
+    default=False
+)
 CELERY_TASK_EAGER_PROPAGATES     = True
 
 # Configuración de Celery para desarrollo y pruebas locales
-CELERY_TASK_ALWAYS_EAGER = True
-CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_TASK_STORE_EAGER_RESULT = False
+
+# core/settings.py — agregar después de CELERY_TASK_ALWAYS_EAGER:
+
+# ── CELERY BEAT — Tareas programadas ──────────────────────────────────────
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+
+    # Verificar stock bajo cada hora
+    'verificar-stock-bajo-cada-hora': {
+        'task':     'ventas.verificar_stock_bajo',
+        'schedule': timedelta(hours=1),
+        'args':     (5,),   # umbral = 5 unidades
+        'options':  {'queue': 'erp_django'},
+    },
+
+    # Reporte de ventas diario a las 8:00 AM (hora México)
+    'reporte-ventas-diario-8am': {
+        'task':     'ventas.reporte_ventas_diario',
+        'schedule': crontab(hour=8, minute=0),
+        'options':  {'queue': 'erp_django'},
+    },
+
+}
+
+# Necesario para que Beat use la zona horaria de Django (no UTC)
+CELERY_BEAT_TIMEZONE = TIME_ZONE   # 'America/Mexico_City'
+CELERY_TASK_ALWAYS_EAGER  = True
